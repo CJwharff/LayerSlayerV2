@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LayerSlayerV2 - Modular Solver UI</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [["\\(", "\\)"], ["$", "$"]] },
+      svg: { fontCache: "global" }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <style>
+    :root {
+      --bg: #030303;
+      --panel: rgba(18, 18, 18, 0.9);
+      --panel-strong: rgba(28, 28, 28, 0.96);
+      --line: rgba(229, 231, 235, 0.16);
+      --line-strong: rgba(229, 231, 235, 0.34);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --orange: #f97316;
+      --green: #34d399;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 12% 10%, rgba(249, 115, 22, 0.14), transparent 30rem),
+        radial-gradient(circle at 86% 0%, rgba(255, 255, 255, 0.08), transparent 24rem),
+        linear-gradient(135deg, #030303 0%, #111111 52%, #050505 100%);
+      color: var(--text);
+    }
+    header {
+      padding: 32px 36px 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, rgba(5, 5, 5, 0.96), rgba(31, 31, 31, 0.78));
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+    .header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 34px;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      background: linear-gradient(90deg, #ffffff, var(--orange) 48%, #ffffff);
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+    header p {
+      margin: 10px 0 0;
+      max-width: 820px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .citation {
+      margin-top: 6px;
+      color: #ffedd5;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .top-action {
+      flex: 0 0 auto;
+      margin-top: 2px;
+      padding: 11px 16px;
+      color: #ffffff;
+      border-color: rgba(249, 115, 22, 0.52);
+      background: linear-gradient(135deg, rgba(249, 115, 22, 0.28), rgba(63, 63, 70, 0.32));
+    }
+    .pdf-exporting .no-export {
+      display: none !important;
+    }
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(249, 115, 22, 0.22);
+      border-radius: 22px;
+      padding: 24px;
+      margin-bottom: 22px;
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+    }
+    .controls {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .controls label {
+      min-width: 180px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-top: 12px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+    .table-scroll {
+      max-width: 100%;
+      overflow-x: auto;
+      border-radius: 14px;
+      scrollbar-color: var(--orange) #18181b;
+    }
+    .table-scroll table {
+      min-width: 980px;
+    }
+    th, td {
+      border-bottom: 1px solid rgba(229, 231, 235, 0.11);
+      padding: 11px 12px;
+      text-align: right;
+      font-size: 13px;
+    }
+    th {
+      background: rgba(24, 24, 27, 0.78);
+      color: #ffffff;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    td { color: #f4f4f5; }
+    th:first-child, td:first-child {
+      text-align: left;
+    }
+    input, select, button {
+      font: inherit;
+      font-size: 13px;
+      padding: 10px 12px;
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.78);
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      outline: none;
+    }
+    td input {
+      width: 100%;
+      min-width: 118px;
+    }
+    input:focus, select:focus {
+      border-color: var(--orange);
+      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.16);
+    }
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, rgba(249, 115, 22, 0.22), rgba(63, 63, 70, 0.28));
+      border-color: var(--line-strong);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      border-color: var(--orange);
+      box-shadow: 0 12px 34px rgba(249, 115, 22, 0.15);
+    }
+    .actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .actions.no-export {
+      margin-bottom: 0;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+    }
+    .metric-card {
+      border: 1px solid rgba(249, 115, 22, 0.22);
+      border-radius: 16px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(31, 31, 31, 0.86), rgba(10, 10, 10, 0.82));
+    }
+    .metric-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .math-label,
+    th mjx-container,
+    label mjx-container,
+    .metric-label mjx-container {
+      font-size: 1.22em !important;
+      font-weight: 900;
+    }
+    .symbol-label {
+      color: #ffffff;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+    }
+    .symbol-label sub {
+      font-size: 0.72em;
+      line-height: 0;
+      vertical-align: sub;
+    }
+    .unit-inline {
+      color: #ffffff;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .metric-value {
+      color: #ffedd5;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .error {
+      color: #fecaca;
+      background: rgba(127, 29, 29, 0.36);
+      border: 1px solid rgba(248, 113, 113, 0.35);
+      padding: 10px 12px;
+      border-radius: 12px;
+      margin-top: 14px;
+      min-height: 18px;
+    }
+    .error:empty {
+      display: none;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+    }
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 18px;
+      color: var(--orange);
+    }
+    .subtle {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+      margin-bottom: 18px;
+    }
+    .thermal-controls {
+      border: 1px solid rgba(249, 115, 22, 0.22);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 16px;
+      background: var(--panel-strong);
+      overflow: hidden;
+    }
+    .interface-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .interface-card {
+      border: 1px solid rgba(249, 115, 22, 0.18);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.38);
+    }
+    .interface-card label {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+    .plots {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr));
+      gap: 22px;
+      margin-top: 22px;
+    }
+    .plot-box {
+      background: rgba(8, 8, 8, 0.78);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+      min-width: 0;
+    }
+    .plot-title {
+      color: #ffffff;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .line-convention {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .line-swatch {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+    .line-swatch::before {
+      content: "";
+      width: 34px;
+      border-top: 3px solid #ffffff;
+      display: inline-block;
+      transform: translateY(1px);
+    }
+    .line-swatch.dotted::before {
+      border-top-style: dotted;
+    }
+    canvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      padding: 28px;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(249, 115, 22, 0.16), transparent 30rem),
+        rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(18px);
+    }
+    .modal-backdrop.active {
+      display: block;
+    }
+    .modal-panel {
+      height: calc(100vh - 56px);
+      max-width: 1180px;
+      margin: 0 auto;
+      overflow: auto;
+      border: 1px solid var(--line-strong);
+      border-radius: 26px;
+      background: linear-gradient(180deg, rgba(24, 24, 27, 0.98), rgba(5, 5, 5, 0.98));
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+    }
+    .modal-panel.wide {
+      max-width: 1480px;
+    }
+    .modal-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 22px 26px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(5, 5, 5, 0.94);
+      backdrop-filter: blur(16px);
+    }
+    .modal-header h2 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .modal-close {
+      min-width: 44px;
+      height: 44px;
+      padding: 0 13px;
+      font-size: 22px;
+      line-height: 1;
+    }
+    .walkthrough {
+      padding: 26px;
+      display: grid;
+      gap: 18px;
+    }
+    .walkthrough-card {
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      border-radius: 20px;
+      padding: 20px;
+      background: rgba(24, 24, 27, 0.68);
+    }
+    .verification-copy {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+      margin: 0;
+    }
+    .walkthrough-card h3 {
+      margin-top: 0;
+      color: #ffffff;
+      font-size: 21px;
+    }
+    .walkthrough-card p {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.75;
+    }
+    .equation-block {
+      margin: 14px 0;
+      padding: 16px 18px;
+      border: 1px solid rgba(249, 115, 22, 0.32);
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.62);
+      color: #f8fbff;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div id="report-export-root">
+  <header class="no-export">
+    <div class="header-row">
+      <div>
+        <h1>LayerSlayerV2</h1>
+        <p>Computational mechanics workspace for multilayer stress, curvature, and interfacial delamination driving force.</p>
+        <div class="citation">Methodology follows Begley &amp; Hutchinson, <em>The Mechanics and Reliability of Films, Multilayers and Coatings</em>, Chapter 14.</div>
+      </div>
+      <div class="top-actions">
+        <button id="open-solver-logic" class="top-action no-export">Solver Logic Walkthrough</button>
+        <button id="open-stoney-verification" class="top-action no-export">Stoney Verification</button>
+        <button id="export-report-pdf" class="top-action no-export">Export PDF</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Custom Multilayer Analysis</h2>
+      <p class="subtle">
+        Enter layers from bottom to top. The solver evaluates <span class="symbol-label">σ(y)</span>, curvature <span class="symbol-label">κ</span>, and interface energy release rate <span class="symbol-label">G</span> for classic, plane-strain, and biaxial delamination assumptions.
+      </p>
+
+      <div class="controls">
+        <label>
+          Input mode
+          <select id="analysis-mode">
+            <option value="mismatch">Direct mismatch strain</option>
+            <option value="thermal">Thermal profile</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="thermal-controls" class="thermal-controls" hidden>
+        <div class="controls">
+          <label>
+            <span class="unit-inline"><span class="symbol-label">T<sub>bottom</sub></span> (°C)</span>
+            <input type="number" step="any" id="thermal-tbot" value="800" />
+          </label>
+          <label>
+            <span class="unit-inline"><span class="symbol-label">T<sub>top</sub></span> (°C)</span>
+            <input type="number" step="any" id="thermal-ttop" value="1300" />
+          </label>
+        </div>
+        <div id="interface-conductance-controls" class="interface-grid"></div>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead id="layer-thead">
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th><span class="symbol-label">h</span> (mm)</th>
+              <th><span class="symbol-label">E</span> (GPa)</th>
+              <th><span class="symbol-label">ν</span></th>
+              <th><span class="unit-inline"><span class="symbol-label">θ</span> (×10⁻³)</span></th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="layer-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="actions no-export">
+        <button id="add-layer">Add layer</button>
+        <button id="run-analysis">Run analysis</button>
+        <button id="reset-defaults">Reset defaults</button>
+      </div>
+      <div id="error-box" class="error"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Solver Output</h2>
+      <div id="results"></div>
+    </section>
+  </main>
+  </div>
+
+  <div id="solver-logic-modal" class="modal-backdrop no-export" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="solver-logic-title">
+      <div class="modal-header">
+        <div>
+          <h2 id="solver-logic-title">Solver Logic Walkthrough</h2>
+          <p class="subtle" style="margin:8px 0 0">Equation sequence implemented by the multilayer stress, curvature, and delamination solver.</p>
+        </div>
+        <button id="close-solver-logic" class="modal-close" aria-label="Close solver logic walkthrough">×</button>
+      </div>
+      <div class="walkthrough">
+        <section class="walkthrough-card">
+          <h3>1. Steady-State Temperature Distribution</h3>
+          <p>For the thermal workflow, each layer is treated as one-dimensional steady conduction. Since \( \partial^2 T / \partial y^2 = 0 \) within each layer, the temperature is linear through each layer and jumps across interfaces with finite conductance.</p>
+          <div class="equation-block">
+            \[
+              R_{\mathrm{total}} =
+              \sum_{i=1}^{N}\frac{h_i}{k_i}
+              +
+              \sum_{j=1}^{N-1}\frac{1}{k_{\mathrm{int},j}},
+              \qquad
+              q = \frac{T_{\mathrm{top}} - T_{\mathrm{bottom}}}{R_{\mathrm{total}}}
+            \]
+          </div>
+          <p>The heat flux \(q\) is uniform. The temperature rise through a layer is \(q h_i/k_i\), and the interface jump is \(q/k_{\mathrm{int},j}\). Walking from bottom to top gives the temperature at every layer boundary.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>2. Mismatch Strain and Mechanical Kinematics</h3>
+          <p>Mismatch strain is the free strain accumulated from the reference, stress-free state to the operating state. In thermal mode, the solver computes it from the local temperature field. In direct mismatch mode, it is supplied directly.</p>
+          <div class="equation-block">
+            \[
+              \theta_i(y) = \alpha_i\left[T_i(y)-T_{\mathrm{ref},i}\right]
+            \]
+            \[
+              \varepsilon(y) = \varepsilon_0 - \kappa y
+            \]
+          </div>
+          <p>The unknowns are the bottom strain \( \varepsilon_0 \) and curvature \( \kappa \). Plane sections remain plane, so the strain field is linear through the stack.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>3. Constitutive Response</h3>
+          <p>The stress in each layer subtracts the mismatch strain from the mechanical strain. The effective modulus and mismatch coefficient depend on the assumed constraint condition.</p>
+          <div class="equation-block">
+            \[
+              \sigma_i(y)=\bar{E}_i\left[\varepsilon_0-\kappa y-\bar{c}_i\theta_i(y)\right]
+            \]
+            \[
+              \text{Biaxial:}\quad \bar{E}_i=\frac{E_i}{1-\nu_i},\quad \bar{c}_i=1
+            \]
+            \[
+              \text{Plane strain:}\quad \bar{E}_i=\frac{E_i}{1-\nu_i^2},\quad \bar{c}_i=1+\nu_i
+            \]
+          </div>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>4. Force and Moment Equilibrium</h3>
+          <p>The intact multilayer stack is free of resultant force and moment unless external resultants \(N_0\) and \(M_0\) are prescribed. Integrating the stress field through each layer gives a \(2 \times 2\) linear system for \( \varepsilon_0 \) and \( \kappa \).</p>
+          <div class="equation-block">
+            \[
+              a_{11}\varepsilon_0 + a_{12}\kappa = b_1 + N_0
+            \]
+            \[
+              a_{21}\varepsilon_0 + a_{22}\kappa = b_2 + M_0
+            \]
+            \[
+              a_{11}=\sum_i \bar{E}_i h_i,
+              \qquad
+              a_{22}=\sum_i \bar{E}_i\frac{y_{t,i}^3-y_{b,i}^3}{3}
+            \]
+          </div>
+          <p>The terms \(b_1\) and \(b_2\) are the mismatch-strain load resultants. Solving this system gives the curvature and stress state used in the output plots.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>5. Delamination Driving Force</h3>
+          <p>For each interface, the solver uses the change-problem/superposition approach from Begley and Hutchinson. The intact stress field is integrated over the lower and upper sub-stacks to obtain force and moment resultants. When a crack forms, the change problem releases those resultants with zero mismatch strain.</p>
+          <div class="equation-block">
+            \[
+              G = \frac{j}{2}\sum_{\mathrm{substacks}}
+              \left(\Delta N\,\Delta\varepsilon_0 + \Delta M\,\Delta\kappa\right)
+            \]
+          </div>
+          <p>The factor \(j\) reflects the cracking constraint: \(j=1\) for plane strain and \(j=2\) for equi-biaxial. The app reports three modes: Classic, Biaxial, and Plane Strain.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="stoney-modal" class="modal-backdrop no-export" aria-hidden="true">
+    <div class="modal-panel wide" role="dialog" aria-modal="true" aria-labelledby="stoney-title">
+      <div class="modal-header">
+        <div>
+          <h2 id="stoney-title">Stoney Formula Verification</h2>
+          <p class="subtle" style="margin:8px 0 0">Single film on a thick substrate, computed through the same multilayer mechanics API used by the main solver.</p>
+        </div>
+        <button id="close-stoney-verification" class="modal-close" aria-label="Close Stoney verification">×</button>
+      </div>
+      <div class="walkthrough">
+        <section class="walkthrough-card">
+          <h3>Verification Objective</h3>
+          <p class="verification-copy">
+            For \(h_f \ll h_s\), the exact multilayer curvature should approach Stoney's approximation:
+          </p>
+          <div class="equation-block">
+            \[
+              \kappa_{\mathrm{Stoney}}
+              =
+              \frac{6\sigma_f h_f}{\bar{E}_s h_s^2},
+              \qquad
+              \bar{E}_s = \frac{E_s}{1-\nu_s}
+            \]
+          </div>
+          <p class="verification-copy">
+            The first plot varies film stress at fixed \(h_f/h_s=0.005\). The second plot varies \(h_f/h_s\) to show where the thin-film approximation is accurate and where it breaks down.
+          </p>
+        </section>
+        <div class="plots">
+          <div class="plot-box">
+            <div class="plot-title">Curvature vs Film Stress</div>
+            <canvas id="plot-stoney-stress" width="700" height="500"></canvas>
+          </div>
+          <div class="plot-box">
+            <div class="plot-title">Accuracy vs Thickness Ratio</div>
+            <canvas id="plot-stoney-ratio" width="700" height="500"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

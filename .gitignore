@@ -1,0 +1,12 @@
+*.pdf
+*.zip
+Layer Slayer Demo.html
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Logs and local temp files
+*.log
+*.tmp
