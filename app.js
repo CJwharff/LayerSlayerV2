@@ -1,4 +1,6 @@
 import { computeGvsPositionSubdivided, computeMultilayerResponse } from "./solver.js";
+import { solveTransientTransport } from "./transientTransportSolver.js";
+import { computeStressHistoryFromTransport } from "./transportStressCoupling.js";
 
 const defaultState = {
   analysisMode: "thermal",
@@ -15,6 +17,60 @@ const defaultState = {
 };
 
 let state = JSON.parse(JSON.stringify(defaultState));
+const defaultTransientState = {
+  boundaryMode: "dirichlet",
+  boundary: {
+    bottomValue: 0,
+    topValue: 1e-6,
+    transferCoefficient: 5,
+    ambientValue: 1e-6,
+  },
+  time: {
+    dt: 0.005,
+    tMax: 0.5,
+    outputTimesText: "0, 0.1, 0.25, 0.5",
+  },
+  output: {
+    finalProfileTable: "hide",
+  },
+  stressCoupling: {
+    enabled: "off",
+    condition: "planestrain",
+    referenceValue: 0,
+  },
+  layers: [
+    {
+      name: "Layer 1",
+      hUm: 10,
+      diffusivity: 100,
+      elements: 30,
+      source: 0,
+      reactionRate: 0,
+      storageCoefficient: 1,
+      initialBottom: 0,
+      initialTop: 0,
+      EGPa: 100,
+      nu: 0.3,
+      swellingCoefficient: 1000,
+    },
+    {
+      name: "Layer 2",
+      hUm: 10,
+      diffusivity: 20,
+      elements: 30,
+      source: 0,
+      reactionRate: 0,
+      storageCoefficient: 1,
+      initialBottom: 0,
+      initialTop: 0,
+      EGPa: 80,
+      nu: 0.24,
+      swellingCoefficient: 4000,
+    },
+  ],
+};
+let transientState = JSON.parse(JSON.stringify(defaultTransientState));
+let lastTransientResponse = null;
 const COLORS = ["#7f1d1d", "#dc2626", "#f97316", "#f59e0b", "#facc15", "#fde047", "#ffedd5", "#991b1b"];
 
 function formatNumber(value, digits = 4) {
@@ -22,6 +78,13 @@ function formatNumber(value, digits = 4) {
   if (Math.abs(value) < 1e-12) return "0";
   if (Math.abs(value) >= 1e4 || Math.abs(value) < 1e-3) return value.toExponential(3);
   return Number(value.toPrecision(digits)).toString();
+}
+
+/** Tick labels: fixed significant digits (e.g. Chart.js axis). */
+function formatSignificantDigits(value, significantDigits) {
+  if (!Number.isFinite(value)) return String(value);
+  if (value === 0) return "0";
+  return value.toPrecision(significantDigits);
 }
 
 function destroyChart(id) {
@@ -196,6 +259,244 @@ function renderModeControls() {
   typesetMath();
 }
 
+function parseOutputTimes(text) {
+  const values = text
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value));
+  if (values.length === 0) {
+    throw new Error("Enter at least one output time.");
+  }
+  return values;
+}
+
+function syncTransientInterfaceInitialValues(changedIndex, changedKey) {
+  if (changedKey === "initialTop" && transientState.layers[changedIndex + 1]) {
+    transientState.layers[changedIndex + 1].initialBottom = transientState.layers[changedIndex].initialTop;
+  }
+  if (changedKey === "initialBottom" && transientState.layers[changedIndex - 1]) {
+    transientState.layers[changedIndex - 1].initialTop = transientState.layers[changedIndex].initialBottom;
+  }
+}
+
+function renderTransientTable() {
+  const tbody = document.getElementById("transient-layer-tbody");
+  tbody.innerHTML = "";
+  transientState.layers.forEach((layer, i) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${i + 1}</td>
+      <td><input value="${layer.name}" data-transient-k="name" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.hUm}" data-transient-k="hUm" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.diffusivity}" data-transient-k="diffusivity" data-transient-i="${i}" /></td>
+      <td><input type="number" step="1" value="${layer.elements}" data-transient-k="elements" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.source}" data-transient-k="source" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.reactionRate}" data-transient-k="reactionRate" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.storageCoefficient}" data-transient-k="storageCoefficient" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.initialBottom}" data-transient-k="initialBottom" data-transient-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.initialTop}" data-transient-k="initialTop" data-transient-i="${i}" /></td>
+      <td><button ${transientState.layers.length <= 1 ? "disabled" : ""} data-remove-transient="${i}">Remove</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function renderTransientBoundaryControls() {
+  const isConvective = transientState.boundaryMode === "convectiveTop";
+  const isBackNoFlux = transientState.boundaryMode === "dirichletTopNoFluxBottom";
+  document.getElementById("transient-bottom-value-label").hidden = isBackNoFlux;
+  document.getElementById("transient-top-value-label").hidden = isConvective;
+  document.getElementById("transient-transfer-label").hidden = !isConvective;
+  document.getElementById("transient-ambient-label").hidden = !isConvective;
+}
+
+function renderTransientStressControls() {
+  const enabled = transientState.stressCoupling.enabled === "on";
+  document.getElementById("transient-stress-condition-label").hidden = !enabled;
+  document.getElementById("transient-stress-reference-label").hidden = !enabled;
+  document.getElementById("transient-stress-properties").hidden = !enabled;
+}
+
+function renderTransientMechTable() {
+  const tbody = document.getElementById("transient-mech-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  transientState.layers.forEach((layer, i) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${layer.name}</td>
+      <td><input type="number" step="any" value="${layer.EGPa}" data-transient-mech-k="EGPa" data-transient-mech-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.nu}" data-transient-mech-k="nu" data-transient-mech-i="${i}" /></td>
+      <td><input type="number" step="any" value="${layer.swellingCoefficient}" data-transient-mech-k="swellingCoefficient" data-transient-mech-i="${i}" /></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function readTransientInput() {
+  const outputTimes = parseOutputTimes(transientState.time.outputTimesText);
+  const baseBoundary = { bottom: transientState.boundary.bottomValue };
+  let boundaryConditions;
+  if (transientState.boundaryMode === "dirichletTopNoFluxBottom") {
+    boundaryConditions = {
+      type: "dirichletTopNoFluxBottom",
+      top: transientState.boundary.topValue,
+    };
+  } else if (transientState.boundaryMode === "dirichlet") {
+    boundaryConditions = {
+      type: "dirichlet",
+      ...baseBoundary,
+      top: transientState.boundary.topValue,
+    };
+  } else {
+    boundaryConditions = {
+      type: "convectiveTop",
+      ...baseBoundary,
+      transferCoefficient: transientState.boundary.transferCoefficient,
+      ambient: transientState.boundary.ambientValue,
+    };
+  }
+
+  return {
+    layers: transientState.layers.map((layer) => ({
+      name: layer.name,
+      h: layer.hUm,
+      diffusivity: layer.diffusivity,
+      elements: Math.round(layer.elements),
+      source: layer.source,
+      reactionRate: layer.reactionRate,
+      storageCoefficient: layer.storageCoefficient,
+      initial: { type: "linear", bottom: layer.initialBottom, top: layer.initialTop },
+    })),
+    boundaryConditions,
+    time: {
+      dt: transientState.time.dt,
+      tMax: transientState.time.tMax,
+      outputTimes,
+    },
+  };
+}
+
+function renderTransientResults(response, stressHistory) {
+  lastTransientResponse = response;
+  const final = response.finalProfile;
+  const stressPlot = stressHistory
+    ? `<div class="plot-box"><div class="plot-title">Position vs Stress (Swelling Mismatch)</div><canvas id="plot-transient-stress" width="700" height="500"></canvas></div>`
+    : "";
+  document.getElementById("transient-results").innerHTML = `
+    <div class="metrics">
+      <div class="metric-card"><div class="metric-label">Final time (hr)</div><div class="metric-value">${formatNumber(final.time, 6)}</div></div>
+    </div>
+    <div class="controls no-export">
+      <label>
+        Final profile node table
+        <select id="transient-final-profile-display">
+          <option value="hide" ${transientState.output.finalProfileTable === "hide" ? "selected" : ""}>Hide node table</option>
+          <option value="show" ${transientState.output.finalProfileTable === "show" ? "selected" : ""}>Show all final-profile nodes</option>
+        </select>
+      </label>
+    </div>
+    <div id="transient-final-profile-table"></div>
+    <div class="plots">
+      <div class="plot-box"><div class="plot-title">Position vs concentration</div><canvas id="plot-transient-profile" width="700" height="500"></canvas></div>
+      ${stressPlot}
+    </div>
+  `;
+  renderTransientFinalProfileTable(response);
+  renderTransientProfileChart("plot-transient-profile", response.profiles);
+  if (stressHistory) {
+    renderTransientStressChart("plot-transient-stress", stressHistory);
+  }
+}
+
+function renderTransientStressChart(canvasId, stressHistory) {
+  destroyChart(canvasId);
+  const datasets = stressHistory.map((item, i) => {
+    const points = [];
+    item.stresses.forEach((stress) => {
+      points.push({ x: stress.stressBot / 1e6, y: stress.yb });
+      points.push({ x: stress.stressTop / 1e6, y: stress.yt });
+    });
+    return {
+      label: `t = ${formatNumber(item.time, 5)}`,
+      data: points,
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: COLORS[i % COLORS.length],
+      borderWidth: 2.5,
+      pointRadius: 0,
+      showLine: true,
+    };
+  });
+  return new Chart(canvasId, {
+    type: "scatter",
+    data: { datasets },
+    options: chartOptions("Stress (MPa)", "Position (μm)", true),
+  });
+}
+
+function renderTransientFinalProfileTable(response) {
+  const container = document.getElementById("transient-final-profile-table");
+  if (!container) return;
+  if (!response || transientState.output.finalProfileTable !== "show") {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <h3>Final Profile Nodes</h3>
+    <table>
+      <thead>
+        <tr><th>Position (μm)</th><th>Concentration (mol/μm³)</th><th>Layer</th></tr>
+      </thead>
+      <tbody>
+        ${response.finalProfile.points
+          .map(
+            (point) => `
+          <tr>
+            <td>${formatNumber(point.y, 6)}</td>
+            <td>${formatNumber(point.value, 6)}</td>
+            <td>${point.layerName}</td>
+          </tr>
+        `
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderTransientProfileChart(canvasId, profiles) {
+  destroyChart(canvasId);
+  const datasets = profiles.map((profile, i) => ({
+    label: `t = ${formatNumber(profile.time, 5)}`,
+    data: profile.points.map((point) => ({ x: point.value, y: point.y })),
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length],
+    borderWidth: 2.5,
+    pointRadius: 0,
+    showLine: true,
+  }));
+  const base = chartOptions("Concentration (mol/μm³)", "Position (μm)", true);
+  return new Chart(canvasId, {
+    type: "scatter",
+    data: { datasets },
+    options: {
+      ...base,
+      scales: {
+        ...base.scales,
+        x: {
+          ...base.scales.x,
+          ticks: {
+            ...base.scales.x.ticks,
+            callback: (value) => formatSignificantDigits(value, 3),
+          },
+        },
+      },
+    },
+  });
+}
+
 function renderStressRows(stresses) {
   return stresses
     .map(
@@ -251,10 +552,10 @@ function renderResults(psResult, bxResult, mechanicalLayers) {
   const layerNames = state.layers.map((layer) => layer.name);
   document.getElementById("results").innerHTML = `
     <div class="metrics">
-      <div class="metric-card"><div class="metric-label">Plane Strain <span class="symbol-label">ε<sub>0</sub></span></div><div class="metric-value">${formatNumber(psResult.epsilon0, 6)}</div></div>
+      <div class="metric-card"><div class="metric-label">Plane Strain <span class="symbol-label">ε<sub>0</sub></span> (—)</div><div class="metric-value">${formatNumber(psResult.epsilon0, 6)}</div></div>
       <div class="metric-card"><div class="metric-label">Plane Strain Curvature <span class="symbol-label">κ</span></div><div class="metric-value">${formatNumber(psResult.curvature, 6)} m⁻¹</div></div>
       <div class="metric-card"><div class="metric-label">Plane Strain Radius <span class="symbol-label">1/κ</span></div><div class="metric-value">${Number.isFinite(psRadius) ? formatNumber(psRadius, 6) : "∞"} m</div></div>
-      <div class="metric-card"><div class="metric-label">Biaxial <span class="symbol-label">ε<sub>0</sub></span></div><div class="metric-value">${formatNumber(bxResult.epsilon0, 6)}</div></div>
+      <div class="metric-card"><div class="metric-label">Biaxial <span class="symbol-label">ε<sub>0</sub></span> (—)</div><div class="metric-value">${formatNumber(bxResult.epsilon0, 6)}</div></div>
       <div class="metric-card"><div class="metric-label">Biaxial Curvature <span class="symbol-label">κ</span></div><div class="metric-value">${formatNumber(bxResult.curvature, 6)} m⁻¹</div></div>
       <div class="metric-card"><div class="metric-label">Biaxial Radius <span class="symbol-label">1/κ</span></div><div class="metric-value">${Number.isFinite(bxRadius) ? formatNumber(bxRadius, 6) : "∞"} m</div></div>
       ${bxResult.temperature ? `<div class="metric-card"><div class="metric-label">Heat Flux <span class="symbol-label">q</span></div><div class="metric-value">${formatNumber(bxResult.temperature.heatFlux, 6)} W/m²</div></div>` : ""}
@@ -263,7 +564,7 @@ function renderResults(psResult, bxResult, mechanicalLayers) {
     <h3>Plane Strain Layer Stresses (MPa)</h3>
     <table>
       <thead>
-        <tr><th>Layer</th><th><span class="symbol-label">σ<sub>bottom</sub></span></th><th><span class="symbol-label">σ<sub>top</sub></span></th><th><span class="symbol-label">y<sub>bottom</sub></span> (mm)</th><th><span class="symbol-label">y<sub>top</sub></span> (mm)</th></tr>
+        <tr><th>Layer</th><th><span class="symbol-label">σ<sub>bottom</sub></span> (MPa)</th><th><span class="symbol-label">σ<sub>top</sub></span> (MPa)</th><th><span class="symbol-label">y<sub>bottom</sub></span> (mm)</th><th><span class="symbol-label">y<sub>top</sub></span> (mm)</th></tr>
       </thead>
       <tbody>${renderStressRows(psResult.layerStress)}</tbody>
     </table>
@@ -271,7 +572,7 @@ function renderResults(psResult, bxResult, mechanicalLayers) {
     <h3>Biaxial Layer Stresses (MPa)</h3>
     <table>
       <thead>
-        <tr><th>Layer</th><th><span class="symbol-label">σ<sub>bottom</sub></span></th><th><span class="symbol-label">σ<sub>top</sub></span></th><th><span class="symbol-label">y<sub>bottom</sub></span> (mm)</th><th><span class="symbol-label">y<sub>top</sub></span> (mm)</th></tr>
+        <tr><th>Layer</th><th><span class="symbol-label">σ<sub>bottom</sub></span> (MPa)</th><th><span class="symbol-label">σ<sub>top</sub></span> (MPa)</th><th><span class="symbol-label">y<sub>bottom</sub></span> (mm)</th><th><span class="symbol-label">y<sub>top</sub></span> (mm)</th></tr>
       </thead>
       <tbody>${renderStressRows(bxResult.layerStress)}</tbody>
     </table>
@@ -279,7 +580,7 @@ function renderResults(psResult, bxResult, mechanicalLayers) {
     <h3>Interfacial Delamination Driving Force G (J/m²)</h3>
     <table>
       <thead>
-        <tr><th>Interface</th><th>Classic</th><th>Plane Strain</th><th>Biaxial</th></tr>
+        <tr><th>Interface</th><th>Classic (J/m²)</th><th>Plane Strain (J/m²)</th><th>Biaxial (J/m²)</th></tr>
       </thead>
       <tbody>${renderErrRows(bxResult.interfaceDelamination)}</tbody>
     </table>
@@ -287,7 +588,7 @@ function renderResults(psResult, bxResult, mechanicalLayers) {
     <h3>Temperature Profile</h3>
     <table>
       <thead>
-        <tr><th>Layer</th><th><span class="symbol-label">T<sub>bottom</sub></span></th><th><span class="symbol-label">T<sub>top</sub></span></th></tr>
+        <tr><th>Layer</th><th><span class="symbol-label">T<sub>bottom</sub></span> (°C)</th><th><span class="symbol-label">T<sub>top</sub></span> (°C)</th></tr>
       </thead>
       <tbody>${renderTemperatureRows(bxResult.temperature, layerNames)}</tbody>
     </table>
@@ -707,9 +1008,60 @@ function runSolver() {
   }
 }
 
+function runTransientSolver() {
+  const errorBox = document.getElementById("transient-error-box");
+  errorBox.textContent = "";
+  try {
+    const response = solveTransientTransport(readTransientInput());
+    let stressHistory = null;
+    if (transientState.stressCoupling.enabled === "on") {
+      const mechanicalProps = transientState.layers.map((layer) => ({
+        name: layer.name,
+        E: layer.EGPa * 1e9,
+        nu: layer.nu,
+        swellingCoefficient: layer.swellingCoefficient,
+      }));
+      stressHistory = computeStressHistoryFromTransport(response, mechanicalProps, {
+        condition: transientState.stressCoupling.condition,
+        referenceValue: transientState.stressCoupling.referenceValue,
+      });
+    }
+    renderTransientResults(response, stressHistory);
+  } catch (error) {
+    document.getElementById("transient-results").innerHTML = "";
+    errorBox.textContent = error.message || String(error);
+  }
+}
+
+function setWorkspaceMode(mode) {
+  document.querySelectorAll(".page-steady").forEach((element) => {
+    element.hidden = mode !== "steady";
+  });
+  document.querySelectorAll(".page-transient").forEach((element) => {
+    element.hidden = mode !== "transient";
+  });
+}
+
 document.addEventListener("input", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
+  const transientIndex = Number(target.dataset.transientI);
+  const transientKey = target.dataset.transientK;
+  if (Number.isInteger(transientIndex) && transientKey && transientState.layers[transientIndex]) {
+    if (transientKey === "name") {
+      transientState.layers[transientIndex][transientKey] = target.value;
+      renderTransientMechTable();
+      return;
+    }
+    const numeric = Number(target.value);
+    transientState.layers[transientIndex][transientKey] = Number.isFinite(numeric) ? numeric : 0;
+    syncTransientInterfaceInitialValues(transientIndex, transientKey);
+    if (transientKey === "initialBottom" || transientKey === "initialTop") {
+      renderTransientTable();
+    }
+    return;
+  }
+
   const interfaceIndex = Number(target.dataset.interfaceIndex);
   if (Number.isInteger(interfaceIndex)) {
     const numeric = Number(target.value);
@@ -727,9 +1079,143 @@ document.addEventListener("input", (event) => {
   state.layers[i][key] = Number.isFinite(numeric) ? numeric : 0;
 });
 
+document.getElementById("transient-boundary-mode").addEventListener("change", (event) => {
+  transientState.boundaryMode = event.target.value;
+  renderTransientBoundaryControls();
+});
+
+document.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  if (target.id === "transient-final-profile-display") {
+    transientState.output.finalProfileTable = target.value;
+    renderTransientFinalProfileTable(lastTransientResponse);
+  }
+  if (target.id === "transient-stress-enabled") {
+    transientState.stressCoupling.enabled = target.value;
+    renderTransientStressControls();
+    renderTransientMechTable();
+  }
+  if (target.id === "transient-stress-condition") {
+    transientState.stressCoupling.condition = target.value;
+  }
+});
+
+document.getElementById("transient-stress-reference").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.stressCoupling.referenceValue = Number.isFinite(value) ? value : 0;
+});
+
+document.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const mechIndexRaw = target.getAttribute("data-transient-mech-i");
+  if (mechIndexRaw == null) return;
+  const i = Number(mechIndexRaw);
+  const key = target.getAttribute("data-transient-mech-k");
+  if (!Number.isInteger(i) || !key || !transientState.layers[i]) return;
+  const numeric = Number(target.value);
+  transientState.layers[i][key] = Number.isFinite(numeric) ? numeric : 0;
+});
+
+document.getElementById("workspace-mode").addEventListener("change", (event) => {
+  setWorkspaceMode(event.target.value);
+  if (event.target.value === "transient") {
+    runTransientSolver();
+  } else {
+    runSolver();
+  }
+});
+
+document.getElementById("transient-bottom-value").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.boundary.bottomValue = Number.isFinite(value) ? value : 0;
+});
+document.getElementById("transient-top-value").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.boundary.topValue = Number.isFinite(value) ? value : 0;
+});
+document.getElementById("transient-transfer").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.boundary.transferCoefficient = Number.isFinite(value) ? value : 0;
+});
+document.getElementById("transient-ambient").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.boundary.ambientValue = Number.isFinite(value) ? value : 0;
+});
+document.getElementById("transient-dt").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.time.dt = Number.isFinite(value) ? value : 0;
+});
+document.getElementById("transient-tmax").addEventListener("input", (event) => {
+  const value = Number(event.target.value);
+  transientState.time.tMax = Number.isFinite(value) ? value : 0;
+});
+document.getElementById("transient-output-times").addEventListener("input", (event) => {
+  transientState.time.outputTimesText = event.target.value;
+});
+
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+
+  if (target.id === "add-transient-layer") {
+    const previousTop = transientState.layers[transientState.layers.length - 1].initialTop;
+    transientState.layers.push({
+      name: `Layer ${transientState.layers.length + 1}`,
+      hUm: 10,
+      diffusivity: 50,
+      elements: 20,
+      source: 0,
+      reactionRate: 0,
+      storageCoefficient: 1,
+      initialBottom: previousTop,
+      initialTop: previousTop,
+      EGPa: 100,
+      nu: 0.3,
+      swellingCoefficient: 1000,
+    });
+    renderTransientTable();
+    renderTransientMechTable();
+    return;
+  }
+
+  if (target.id === "run-transient-analysis") {
+    runTransientSolver();
+    return;
+  }
+
+  if (target.id === "reset-transient-defaults") {
+    transientState = JSON.parse(JSON.stringify(defaultTransientState));
+    document.getElementById("transient-boundary-mode").value = transientState.boundaryMode;
+    document.getElementById("transient-bottom-value").value = String(transientState.boundary.bottomValue);
+    document.getElementById("transient-top-value").value = String(transientState.boundary.topValue);
+    document.getElementById("transient-transfer").value = String(transientState.boundary.transferCoefficient);
+    document.getElementById("transient-ambient").value = String(transientState.boundary.ambientValue);
+    document.getElementById("transient-dt").value = String(transientState.time.dt);
+    document.getElementById("transient-tmax").value = String(transientState.time.tMax);
+    document.getElementById("transient-output-times").value = transientState.time.outputTimesText;
+    document.getElementById("transient-stress-enabled").value = transientState.stressCoupling.enabled;
+    document.getElementById("transient-stress-condition").value = transientState.stressCoupling.condition;
+    document.getElementById("transient-stress-reference").value = String(transientState.stressCoupling.referenceValue);
+    renderTransientTable();
+    renderTransientBoundaryControls();
+    renderTransientStressControls();
+    renderTransientMechTable();
+    runTransientSolver();
+    return;
+  }
+
+  const removeTransientIndexRaw = target.getAttribute("data-remove-transient");
+  if (removeTransientIndexRaw != null) {
+    const removeIndex = Number(removeTransientIndexRaw);
+    if (Number.isInteger(removeIndex) && transientState.layers[removeIndex] && transientState.layers.length > 1) {
+      transientState.layers.splice(removeIndex, 1);
+      renderTransientTable();
+      renderTransientMechTable();
+    }
+    return;
+  }
 
   if (target.id === "add-layer") {
     state.layers.push({
@@ -799,12 +1285,35 @@ document.getElementById("solver-logic-modal").addEventListener("click", (event) 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeSolverLogicModal();
+    closeTransientSolverLogicModal();
     closeStoneyModal();
   }
 });
 
 function closeSolverLogicModal() {
   const modal = document.getElementById("solver-logic-modal");
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+document.getElementById("open-transient-solver-logic").addEventListener("click", () => {
+  const modal = document.getElementById("transient-solver-logic-modal");
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  typesetMath();
+});
+
+document.getElementById("close-transient-solver-logic").addEventListener("click", closeTransientSolverLogicModal);
+document.getElementById("transient-solver-logic-modal").addEventListener("click", (event) => {
+  if (event.target.id === "transient-solver-logic-modal") {
+    closeTransientSolverLogicModal();
+  }
+});
+
+function closeTransientSolverLogicModal() {
+  const modal = document.getElementById("transient-solver-logic-modal");
   modal.classList.remove("active");
   modal.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
@@ -888,6 +1397,23 @@ document.getElementById("thermal-ttop").addEventListener("input", (event) => {
 document.getElementById("analysis-mode").value = state.analysisMode;
 document.getElementById("thermal-tbot").value = String(state.thermal.TbotC);
 document.getElementById("thermal-ttop").value = String(state.thermal.TtopC);
+document.getElementById("workspace-mode").value = "steady";
+document.getElementById("transient-boundary-mode").value = transientState.boundaryMode;
+document.getElementById("transient-bottom-value").value = String(transientState.boundary.bottomValue);
+document.getElementById("transient-top-value").value = String(transientState.boundary.topValue);
+document.getElementById("transient-transfer").value = String(transientState.boundary.transferCoefficient);
+document.getElementById("transient-ambient").value = String(transientState.boundary.ambientValue);
+document.getElementById("transient-dt").value = String(transientState.time.dt);
+document.getElementById("transient-tmax").value = String(transientState.time.tMax);
+document.getElementById("transient-output-times").value = transientState.time.outputTimesText;
+document.getElementById("transient-stress-enabled").value = transientState.stressCoupling.enabled;
+document.getElementById("transient-stress-condition").value = transientState.stressCoupling.condition;
+document.getElementById("transient-stress-reference").value = String(transientState.stressCoupling.referenceValue);
 renderTable();
 renderModeControls();
+renderTransientTable();
+renderTransientBoundaryControls();
+renderTransientStressControls();
+renderTransientMechTable();
+setWorkspaceMode("steady");
 runSolver();

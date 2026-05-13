@@ -121,6 +121,27 @@
       flex-direction: column;
       gap: 8px;
     }
+    .page-selector {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .page-selector label {
+      min-width: min(100%, 360px);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .page-tools {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 0 0 18px;
+    }
     table {
       width: 100%;
       border-collapse: separate;
@@ -454,17 +475,28 @@
       <div>
         <h1>LayerSlayerV2</h1>
         <p>Computational mechanics workspace for multilayer stress, curvature, and interfacial delamination driving force.</p>
-        <div class="citation">Methodology follows Begley &amp; Hutchinson, <em>The Mechanics and Reliability of Films, Multilayers and Coatings</em>, Chapter 14.</div>
+        <div class="citation">Methodology follows Begley &amp; Hutchinson, <em>The Mechanics and Reliability of Films, Multilayers and Coatings</em>.</div>
       </div>
       <div class="top-actions">
-        <button id="open-solver-logic" class="top-action no-export">Solver Logic Walkthrough</button>
-        <button id="open-stoney-verification" class="top-action no-export">Stoney Verification</button>
+        <div class="page-selector no-export">
+          <label>
+            Analysis page
+            <select id="workspace-mode">
+              <option value="steady">Custom Multilayer Analysis - Steady State</option>
+              <option value="transient">Multilayer Transient Transport</option>
+            </select>
+          </label>
+        </div>
         <button id="export-report-pdf" class="top-action no-export">Export PDF</button>
       </div>
     </div>
   </header>
   <main>
-    <section class="panel">
+    <section id="steady-input-panel" class="panel page-steady">
+      <div class="page-tools no-export">
+        <button id="open-solver-logic">Solver Logic Walkthrough</button>
+        <button id="open-stoney-verification">Stoney Verification</button>
+      </div>
       <h2>Custom Multilayer Analysis</h2>
       <p class="subtle">
         Enter layers from bottom to top. The solver evaluates <span class="symbol-label">σ(y)</span>, curvature <span class="symbol-label">κ</span>, and interface energy release rate <span class="symbol-label">G</span> for classic, plane-strain, and biaxial delamination assumptions.
@@ -519,9 +551,136 @@
       <div id="error-box" class="error"></div>
     </section>
 
-    <section class="panel">
+    <section id="steady-output-panel" class="panel page-steady">
       <h2>Solver Output</h2>
       <div id="results"></div>
+    </section>
+
+    <section id="transient-input-panel" class="panel page-transient" hidden>
+      <div class="page-tools no-export">
+        <button id="open-transient-solver-logic">Transient Solver Walkthrough</button>
+      </div>
+      <h2>Multilayer Transient Transport</h2>
+      <p class="subtle">
+        Solves one-dimensional transient diffusion through bonded planar layers with continuous concentration and flux at interfaces. The same model applies to heat conduction by interpreting concentration as temperature and diffusivity as thermal diffusivity.
+      </p>
+
+      <div class="controls">
+        <label>
+          Boundary mode
+          <select id="transient-boundary-mode">
+            <option value="dirichlet">Prescribed bottom and top values</option>
+            <option value="dirichletTopNoFluxBottom">Hot face value with back-face no flux</option>
+            <option value="convectiveTop">Fixed bottom with convective top</option>
+          </select>
+        </label>
+        <label id="transient-bottom-value-label">
+          <span>Bottom value (mol/μm³)</span>
+          <input type="number" step="any" id="transient-bottom-value" value="0" />
+        </label>
+        <label id="transient-top-value-label">
+          <span>Top value (mol/μm³)</span>
+          <input type="number" step="any" id="transient-top-value" value="1e-6" />
+        </label>
+        <label id="transient-transfer-label" hidden>
+          <span>Transfer coefficient (μm/hr)</span>
+          <input type="number" step="any" id="transient-transfer" value="5" />
+        </label>
+        <label id="transient-ambient-label" hidden>
+          <span>Ambient top value (mol/μm³)</span>
+          <input type="number" step="any" id="transient-ambient" value="1e-6" />
+        </label>
+      </div>
+
+      <div class="controls">
+        <label>
+          Time step (hr)
+          <input type="number" step="any" id="transient-dt" value="0.005" />
+        </label>
+        <label>
+          Max time (hr)
+          <input type="number" step="any" id="transient-tmax" value="0.5" />
+        </label>
+        <label>
+          Output times (hr, comma separated)
+          <input id="transient-output-times" value="0, 0.1, 0.25, 0.5" />
+        </label>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th><span class="symbol-label">h</span> (μm)</th>
+              <th><span class="symbol-label">D</span> (μm²/hr)</th>
+              <th>Elements</th>
+              <th>Source (mol/(μm³·hr))</th>
+              <th>Reaction rate (1/hr)</th>
+              <th>Storage β (—)</th>
+              <th>Initial bottom (mol/μm³)</th>
+              <th>Initial top (mol/μm³)</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="transient-layer-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="actions no-export">
+        <button id="add-transient-layer">Add layer</button>
+        <button id="run-transient-analysis">Run transient analysis</button>
+        <button id="reset-transient-defaults">Reset transient defaults</button>
+      </div>
+      <div id="transient-error-box" class="error"></div>
+
+      <div id="transient-stress-section" style="margin-top: 22px;">
+        <div class="controls">
+          <label>
+            Stress coupling
+            <select id="transient-stress-enabled">
+              <option value="off">Off</option>
+              <option value="on">On</option>
+            </select>
+          </label>
+          <label id="transient-stress-condition-label" hidden>
+            Constraint condition
+            <select id="transient-stress-condition">
+              <option value="planestrain">Plane strain</option>
+              <option value="biaxial">Equi-biaxial</option>
+            </select>
+          </label>
+          <label id="transient-stress-reference-label" hidden style="min-width: auto;">
+            Reference Value (mol/μm³)
+            <input type="number" step="any" id="transient-stress-reference" value="0" />
+          </label>
+        </div>
+        <div id="transient-stress-properties" hidden>
+          <p class="subtle" style="margin: 6px 0 10px;">
+            Per-layer mechanical properties. Mismatch strain is computed as <span class="symbol-label">θ(y,t)</span> = <span class="symbol-label">β<sub>swell</sub></span> · (<span class="symbol-label">c(y,t)</span> − <span class="symbol-label">c<sub>ref</sub></span>) at every node, then fed into the Milestone 1 stress solver.
+          </p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th><span class="symbol-label">E</span> (GPa)</th>
+                  <th><span class="symbol-label">ν</span></th>
+                  <th><span class="symbol-label">β<sub>swell</sub></span> (μm³/mol)</th>
+                </tr>
+              </thead>
+              <tbody id="transient-mech-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="transient-output-panel" class="panel page-transient" hidden>
+      <h2>Transient Transport Output</h2>
+      <div id="transient-results"></div>
     </section>
   </main>
   </div>
@@ -611,6 +770,89 @@
             \]
           </div>
           <p>The factor \(j\) reflects the cracking constraint: \(j=1\) for plane strain and \(j=2\) for equi-biaxial. The app reports three modes: Classic, Biaxial, and Plane Strain.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="transient-solver-logic-modal" class="modal-backdrop no-export" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="transient-solver-logic-title">
+      <div class="modal-header">
+        <div>
+          <h2 id="transient-solver-logic-title">Transient Solver Walkthrough</h2>
+          <p class="subtle" style="margin:8px 0 0">Transient multilayer transport process derived from Begley &amp; Hutchinson Chapters 13 and 15.</p>
+        </div>
+        <button id="close-transient-solver-logic" class="modal-close" aria-label="Close transient solver walkthrough">×</button>
+      </div>
+      <div class="walkthrough">
+        <section class="walkthrough-card">
+          <h3>1. Governing Transport Equation</h3>
+          <p>Each layer is treated as one-dimensional transient diffusion through the thickness. The dependent variable may be concentration for species transport or temperature for heat conduction.</p>
+          <div class="equation-block">
+            \[
+              \frac{\partial c_i}{\partial t}
+              =
+              D_i\frac{\partial^2 c_i}{\partial y^2}
+              + S_i
+            \]
+          </div>
+          <p>The current implementation supports constant production terms and first-order volumetric consumption. A storage coefficient \( \beta_i \) can be used to represent reversible pore storage.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>2. Layer Discretization</h3>
+          <p>Following the Chapter 15 transient framework, each physical layer is subdivided into uniform through-thickness elements. Within each element, the concentration or temperature profile is approximated as linear.</p>
+          <div class="equation-block">
+            \[
+              c(y,t) \approx N_1(y)c_1(t)+N_2(y)c_2(t)
+            \]
+          </div>
+          <p>Adjacent layers share the same interface node in this first implementation, which enforces concentration continuity directly.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>3. Flux Continuity and Assembly</h3>
+          <p>Element mass and diffusion matrices are assembled into one global system. This conserves flux across internal nodes, so the interface flux leaving one layer balances the flux entering the next.</p>
+          <div class="equation-block">
+            \[
+              [C_\beta]\{\dot{c}\} + \left([K_D]+[M_k]\right)\{c\} = \{s\} + \{q(t)\}
+            \]
+          </div>
+          <p>This mirrors the Chapter 15 transient form \( [C]\{\dot{T}\} + [K]\{T\} = \{q(t)\} \), generalized here to concentration or temperature and augmented with the course-note storage and reaction terms.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>4. Boundary Conditions</h3>
+          <p>The first release supports the boundary-condition families used in the textbook transient examples and course notes: prescribed bottom and top values, a prescribed hot-face value with no flux through the back face, or fixed bottom with convective exchange at the top surface.</p>
+          <div class="equation-block">
+            \[
+              c(0,t)=c_b(t), \qquad c(H,t)=c_t(t)
+            \]
+            \[
+              \frac{\partial c}{\partial y}\bigg|_{0}=0, \qquad c(H,t)=c_s
+            \]
+            \[
+              -D\frac{\partial c}{\partial y}\bigg|_{H}
+              =
+              h\left[c(H,t)-c_{\infty}(t)\right]
+            \]
+          </div>
+          <p class="subtle">UI units on this page: <span class="symbol-label">c</span> in mol/μm³; thickness and position in μm; time in hr; <span class="symbol-label">D</span> in μm²/hr; volumetric source in mol/(μm³·hr); Robin transfer coefficient in μm/hr; swelling coefficient <span class="symbol-label">β<sub>swell</sub></span> in μm³/mol.</p>
+        </section>
+
+        <section class="walkthrough-card">
+          <h3>5. Time Integration and Output</h3>
+          <p>The assembled equations are advanced with backward Euler for robustness with fine meshes and sharp transients. The solver steps exactly onto requested output times and returns the full position-value profile at each one.</p>
+          <div class="equation-block">
+            \[
+              \left([C]+\Delta t[K]\right)\{c\}^{n+1}
+              =
+              [C]\{c\}^{n}
+              +
+              \Delta t\{s\}^{n+1}
+            \]
+          </div>
+          <p>These time-resolved profiles are the input needed for the future transient stress, curvature, and ERR delamination extension.</p>
         </section>
       </div>
     </div>

@@ -6,6 +6,7 @@ Layer Slayer Demo.html
 .DS_Store
 Thumbs.db
 .vscode/
+*.onetoc2
 
 # Logs and local temp files
 *.log
