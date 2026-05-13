@@ -466,9 +466,34 @@
       color: #f8fbff;
       overflow-x: auto;
     }
+    .file-protocol-banner {
+      margin: 0;
+      padding: 12px 18px;
+      background: rgba(220, 38, 38, 0.22);
+      border-bottom: 1px solid rgba(248, 113, 113, 0.45);
+      color: #fecaca;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .file-protocol-banner code {
+      font-size: 13px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
+  <div id="file-protocol-warning" class="file-protocol-banner no-export" hidden>
+    <strong>Opened from disk (file://):</strong> ES module scripts cannot load linked <code>.js</code> files from this page. Use <code>dist/LayerSlayerV2.html</code> for a double-clickable build, or run a local HTTP server in this project folder (for example <code>npx --yes serve .</code>) and open the served URL.
+  </div>
+  <script>
+    if (location.protocol === "file:") {
+      const isBundledDist = /[/\\]dist[/\\]LayerSlayerV2\.html$/i.test(location.pathname);
+      const banner = document.getElementById("file-protocol-warning");
+      if (banner && !isBundledDist) banner.hidden = false;
+    }
+  </script>
   <div id="report-export-root">
   <header class="no-export">
     <div class="header-row">

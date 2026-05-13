@@ -43,7 +43,9 @@ const transientSolver = stripModuleSyntax(fs.readFileSync(transientSolverPath, "
 const transportStress = stripModuleSyntax(fs.readFileSync(transportStressPath, "utf8"), "transportStress");
 const app = stripModuleSyntax(fs.readFileSync(appPath, "utf8"), "app");
 
-const bundledScript = `<script type="module">\n${model}\n\n${transientModel}\n\n${solver}\n\n${transientSolver}\n\n${transportStress}\n\n${app}\n</script>`;
+// Classic script (not type="module") so opening dist/LayerSlayerV2.html via file:// works.
+// ES modules are blocked or unreliable on file origins; the bundle has no import/export left.
+const bundledScript = `<script>\n${model}\n\n${transientModel}\n\n${solver}\n\n${transientSolver}\n\n${transportStress}\n\n${app}\n</script>`;
 const standaloneHtml = html.replace(
   '  <script type="module" src="./app.js"></script>',
   bundledScript
