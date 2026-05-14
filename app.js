@@ -472,10 +472,23 @@ function renderTransientStressChart(canvasId, stressHistory) {
       showLine: true,
     };
   });
+  const base = chartOptions("Stress (MPa)", "Position (μm)", true);
   return new Chart(canvasId, {
     type: "scatter",
     data: { datasets },
-    options: chartOptions("Stress (MPa)", "Position (μm)", true),
+    options: {
+      ...base,
+      scales: {
+        ...base.scales,
+        x: {
+          ...base.scales.x,
+          ticks: {
+            ...base.scales.x.ticks,
+            callback: (value) => formatSignificantDigits(value, 3),
+          },
+        },
+      },
+    },
   });
 }
 
