@@ -821,13 +821,14 @@
           <p>Each layer is treated as one-dimensional transient diffusion through the thickness. The dependent variable may be concentration for species transport or temperature for heat conduction.</p>
           <div class="equation-block">
             \[
-              \frac{\partial c_i}{\partial t}
+              \beta_i\frac{\partial c_i}{\partial t}
               =
               D_i\frac{\partial^2 c_i}{\partial y^2}
+              - k_i\,c_i
               + S_i
             \]
           </div>
-          <p>The current implementation supports constant production terms and first-order volumetric consumption. A storage coefficient \( \beta_i \) can be used to represent reversible pore storage.</p>
+          <p>\(\beta_i\) is the storage coefficient (reversible pore storage; default 1). \(D_i\) is the diffusivity. \(k_i \geq 0\) is a first-order volumetric sink (consumption). \(S_i\) is a constant volumetric source (production).</p>
         </section>
 
         <section class="walkthrough-card">
@@ -883,7 +884,7 @@
               \Delta t\{s\}^{n+1}
             \]
           </div>
-          <p>These time-resolved profiles are the input needed for the future transient stress, curvature, and ERR delamination extension.</p>
+          <p>These time-resolved profiles drive the optional stress coupling step: the swelling mismatch strain \(\theta(y,t) = \beta_{\mathrm{swell}}\,(c(y,t)-c_{\mathrm{ref}})\) is evaluated at every node and passed to the Milestone 1 multilayer stress solver to produce stress and curvature histories.</p>
         </section>
       </div>
     </div>
