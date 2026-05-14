@@ -258,6 +258,7 @@
       color: #ffffff;
       font-weight: 900;
       white-space: nowrap;
+      text-transform: none;
     }
     .metric-value {
       color: #ffedd5;
@@ -600,19 +601,19 @@
           </select>
         </label>
         <label id="transient-bottom-value-label">
-          <span>Bottom value (mol/μm³)</span>
+          <span class="unit-inline">Bottom value (mol/μm³)</span>
           <input type="number" step="any" id="transient-bottom-value" value="0" />
         </label>
         <label id="transient-top-value-label">
-          <span>Top value (mol/μm³)</span>
+          <span class="unit-inline">Top value (mol/μm³)</span>
           <input type="number" step="any" id="transient-top-value" value="1e-6" />
         </label>
         <label id="transient-transfer-label" hidden>
-          <span>Transfer coefficient (μm/hr)</span>
+          <span class="unit-inline">Transfer coefficient (μm/hr)</span>
           <input type="number" step="any" id="transient-transfer" value="5" />
         </label>
         <label id="transient-ambient-label" hidden>
-          <span>Ambient top value (mol/μm³)</span>
+          <span class="unit-inline">Ambient top value (mol/μm³)</span>
           <input type="number" step="any" id="transient-ambient" value="1e-6" />
         </label>
       </div>
@@ -677,7 +678,7 @@
             </select>
           </label>
           <label id="transient-stress-reference-label" hidden style="min-width: auto;">
-            Reference Value (mol/μm³)
+            <span class="unit-inline">Reference Value (mol/μm³)</span>
             <input type="number" step="any" id="transient-stress-reference" value="0" />
           </label>
         </div>
