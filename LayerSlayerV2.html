@@ -586,10 +586,17 @@
       </div>
       <h2>Multilayer Transient Transport</h2>
       <p class="subtle">
-        Solves one-dimensional transient diffusion through bonded planar layers with continuous concentration and flux at interfaces. The same model applies to heat conduction by interpreting concentration as temperature and diffusivity as thermal diffusivity.
+        Solves one-dimensional transient diffusion through bonded planar layers with continuous field variable and flux at interfaces.
       </p>
 
       <div class="controls">
+        <label>
+          Transport mode
+          <select id="transient-transport-mode">
+            <option value="chemical">Chemical transport (concentration)</option>
+            <option value="thermal">Thermal transport (temperature)</option>
+          </select>
+        </label>
         <label>
           Boundary mode
           <select id="transient-boundary-mode">
@@ -638,13 +645,13 @@
               <th>#</th>
               <th>Name</th>
               <th><span class="symbol-label">h</span> (μm)</th>
-              <th><span class="symbol-label">D</span> (μm²/hr)</th>
+              <th id="th-diffusivity"><span class="symbol-label">D</span> (μm²/hr)</th>
               <th>Elements</th>
-              <th>Source (mol/(μm³·hr))</th>
+              <th id="th-source">Source (mol/(μm³·hr))</th>
               <th>Reaction rate (1/hr)</th>
               <th>Storage β (—)</th>
-              <th>Initial bottom (mol/μm³)</th>
-              <th>Initial top (mol/μm³)</th>
+              <th id="th-initial-bottom">Initial bottom (mol/μm³)</th>
+              <th id="th-initial-top">Initial top (mol/μm³)</th>
               <th>Action</th>
             </tr>
           </thead>

@@ -18,6 +18,7 @@ const defaultState = {
 
 let state = JSON.parse(JSON.stringify(defaultState));
 const defaultTransientState = {
+  transportMode: "chemical",
   boundaryMode: "dirichlet",
   boundary: {
     bottomValue: 0,
@@ -85,6 +86,26 @@ function formatSignificantDigits(value, significantDigits) {
   if (!Number.isFinite(value)) return String(value);
   if (value === 0) return "0";
   return value.toPrecision(significantDigits);
+}
+
+function getTransientLabels() {
+  const isThermal = transientState.transportMode === "thermal";
+  return {
+    fieldVar:       isThermal ? "Temperature" : "Concentration",
+    fieldUnit:      isThermal ? "K" : "mol/μm³",
+    diffusivityCol: isThermal ? "α (μm²/hr)" : "D (μm²/hr)",
+    diffusivitySym: isThermal ? "α" : "D",
+    sourceCol:      isThermal ? "Heat source (K/hr)" : "Source (mol/(μm³·hr))",
+    initBottom:     isThermal ? "Initial bottom (K)" : "Initial bottom (mol/μm³)",
+    initTop:        isThermal ? "Initial top (K)" : "Initial top (mol/μm³)",
+    bottomValue:    isThermal ? "Bottom value (K)" : "Bottom value (mol/μm³)",
+    topValue:       isThermal ? "Top value (K)" : "Top value (mol/μm³)",
+    ambientValue:   isThermal ? "Ambient top value (K)" : "Ambient top value (mol/μm³)",
+    referenceValue: isThermal ? "Reference Value (K)" : "Reference Value (mol/μm³)",
+    plotXAxis:      isThermal ? "Temperature (K)" : "Concentration (mol/μm³)",
+    plotTitle:      isThermal ? "Position vs temperature" : "Position vs concentration",
+    tableHeader:    isThermal ? "Temperature (K)" : "Concentration (mol/μm³)",
+  };
 }
 
 function destroyChart(id) {
@@ -299,6 +320,28 @@ function renderTransientTable() {
     `;
     tbody.appendChild(row);
   });
+  applyTransientLabels();
+}
+
+function applyTransientLabels() {
+  const L = getTransientLabels();
+  // boundary spans
+  const setSpan = (id, text) => {
+    const el = document.querySelector(`#${id} .unit-inline`);
+    if (el) el.textContent = text;
+  };
+  setSpan("transient-bottom-value-label", L.bottomValue);
+  setSpan("transient-top-value-label",    L.topValue);
+  setSpan("transient-ambient-label",      L.ambientValue);
+  // reference value label
+  const refSpan = document.querySelector("#transient-stress-reference-label .unit-inline");
+  if (refSpan) refSpan.textContent = L.referenceValue;
+  // layer table headers
+  const setTh = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  setTh("th-diffusivity",    `<span class="symbol-label">${L.diffusivitySym}</span> (μm²/hr)`);
+  setTh("th-source",         L.sourceCol);
+  setTh("th-initial-bottom", L.initBottom);
+  setTh("th-initial-top",    L.initTop);
 }
 
 function renderTransientBoundaryControls() {
@@ -308,6 +351,7 @@ function renderTransientBoundaryControls() {
   document.getElementById("transient-top-value-label").hidden = isConvective;
   document.getElementById("transient-transfer-label").hidden = !isConvective;
   document.getElementById("transient-ambient-label").hidden = !isConvective;
+  applyTransientLabels();
 }
 
 function renderTransientStressControls() {
@@ -399,7 +443,7 @@ function renderTransientResults(response, stressHistory) {
     </div>
     <div id="transient-final-profile-table"></div>
     <div class="plots">
-      <div class="plot-box"><div class="plot-title">Position vs concentration</div><canvas id="plot-transient-profile" width="700" height="500"></canvas></div>
+      <div class="plot-box"><div class="plot-title">${getTransientLabels().plotTitle}</div><canvas id="plot-transient-profile" width="700" height="500"></canvas></div>
       ${stressPlot}
     </div>
   `;
@@ -447,7 +491,7 @@ function renderTransientFinalProfileTable(response) {
     <h3>Final Profile Nodes</h3>
     <table>
       <thead>
-        <tr><th>Position (μm)</th><th>Concentration (mol/μm³)</th><th>Layer</th></tr>
+        <tr><th>Position (μm)</th><th>${getTransientLabels().tableHeader}</th><th>Layer</th></tr>
       </thead>
       <tbody>
         ${response.finalProfile.points
@@ -477,7 +521,7 @@ function renderTransientProfileChart(canvasId, profiles) {
     pointRadius: 0,
     showLine: true,
   }));
-  const base = chartOptions("Concentration (mol/μm³)", "Position (μm)", true);
+  const base = chartOptions(getTransientLabels().plotXAxis, "Position (μm)", true);
   return new Chart(canvasId, {
     type: "scatter",
     data: { datasets },
@@ -1079,6 +1123,11 @@ document.addEventListener("input", (event) => {
   state.layers[i][key] = Number.isFinite(numeric) ? numeric : 0;
 });
 
+document.getElementById("transient-transport-mode").addEventListener("change", (event) => {
+  transientState.transportMode = event.target.value;
+  applyTransientLabels();
+});
+
 document.getElementById("transient-boundary-mode").addEventListener("change", (event) => {
   transientState.boundaryMode = event.target.value;
   renderTransientBoundaryControls();
@@ -1187,6 +1236,7 @@ document.addEventListener("click", (event) => {
 
   if (target.id === "reset-transient-defaults") {
     transientState = JSON.parse(JSON.stringify(defaultTransientState));
+    document.getElementById("transient-transport-mode").value = transientState.transportMode;
     document.getElementById("transient-boundary-mode").value = transientState.boundaryMode;
     document.getElementById("transient-bottom-value").value = String(transientState.boundary.bottomValue);
     document.getElementById("transient-top-value").value = String(transientState.boundary.topValue);
@@ -1398,6 +1448,7 @@ document.getElementById("analysis-mode").value = state.analysisMode;
 document.getElementById("thermal-tbot").value = String(state.thermal.TbotC);
 document.getElementById("thermal-ttop").value = String(state.thermal.TtopC);
 document.getElementById("workspace-mode").value = "steady";
+document.getElementById("transient-transport-mode").value = transientState.transportMode;
 document.getElementById("transient-boundary-mode").value = transientState.boundaryMode;
 document.getElementById("transient-bottom-value").value = String(transientState.boundary.bottomValue);
 document.getElementById("transient-top-value").value = String(transientState.boundary.topValue);
