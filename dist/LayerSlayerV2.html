@@ -3140,8 +3140,17 @@ document.addEventListener("input", (event) => {
     const numeric = Number(target.value);
     transientState.layers[transientIndex][transientKey] = Number.isFinite(numeric) ? numeric : 0;
     syncTransientInterfaceInitialValues(transientIndex, transientKey);
-    if (transientKey === "initialBottom" || transientKey === "initialTop") {
-      renderTransientTable();
+    if (transientKey === "initialTop" && transientState.layers[transientIndex + 1]) {
+      const sibling = document.querySelector(
+        `[data-transient-k="initialBottom"][data-transient-i="${transientIndex + 1}"]`
+      );
+      if (sibling) sibling.value = String(transientState.layers[transientIndex + 1].initialBottom);
+    }
+    if (transientKey === "initialBottom" && transientState.layers[transientIndex - 1]) {
+      const sibling = document.querySelector(
+        `[data-transient-k="initialTop"][data-transient-i="${transientIndex - 1}"]`
+      );
+      if (sibling) sibling.value = String(transientState.layers[transientIndex - 1].initialTop);
     }
     return;
   }
