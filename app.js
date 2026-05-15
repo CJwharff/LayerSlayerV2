@@ -1419,15 +1419,17 @@ async function exportReportPdf() {
   try {
     await window.MathJax?.typesetPromise?.();
 
-    const width = Math.ceil(source.offsetWidth);
-    const height = Math.ceil(source.scrollHeight) + 60;
+    // Use a wide virtual viewport so all table columns expand to fit without clipping.
+    // 1800px gives 11-column transient tables ~160px per column at 11px font.
+    const windowWidth = 1800;
+    const height = Math.ceil(source.scrollHeight) + 80;
     const filename = `LayerSlayerV2-report-${new Date().toISOString().slice(0, 10)}.pdf`;
 
     const canvas = await window.html2canvas(source, {
       scale: 1.5,
       backgroundColor: "#030303",
       useCORS: true,
-      windowWidth: width,
+      windowWidth,
       windowHeight: height,
       ignoreElements: (element) => element.classList?.contains("no-export"),
     });
