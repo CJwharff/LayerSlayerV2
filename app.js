@@ -103,7 +103,7 @@ function getTransientLabels() {
     ambientValue:   isThermal ? "Ambient top value (K)" : "Ambient top value (mol/μm³)",
     referenceValue: isThermal ? "Reference Value (K)" : "Reference Value (mol/μm³)",
     plotXAxis:      isThermal ? "Temperature (K)" : "Concentration (mol/μm³)",
-    plotTitle:      isThermal ? "Position vs temperature" : "Position vs concentration",
+    plotTitle:      isThermal ? "Position (μm) vs Temperature" : "Position (μm) vs Concentration",
     tableHeader:    isThermal ? "Temperature (K)" : "Concentration (mol/μm³)",
   };
 }
@@ -426,7 +426,7 @@ function renderTransientResults(response, stressHistory) {
   lastTransientResponse = response;
   const final = response.finalProfile;
   const stressPlot = stressHistory
-    ? `<div class="plot-box"><div class="plot-title">Position vs Stress (Swelling Mismatch)</div><canvas id="plot-transient-stress" width="700" height="500"></canvas></div>`
+    ? `<div class="plot-box"><div class="plot-title">Position (μm) vs Stress (MPa)</div><canvas id="plot-transient-stress" width="700" height="500"></canvas></div>`
     : "";
   document.getElementById("transient-results").innerHTML = `
     <div class="metrics">
@@ -459,8 +459,8 @@ function renderTransientStressChart(canvasId, stressHistory) {
   const datasets = stressHistory.map((item, i) => {
     const points = [];
     item.stresses.forEach((stress) => {
-      points.push({ x: stress.stressBot / 1e6, y: stress.yb });
-      points.push({ x: stress.stressTop / 1e6, y: stress.yt });
+      points.push({ x: stress.yb, y: stress.stressBot / 1e6 });
+      points.push({ x: stress.yt, y: stress.stressTop / 1e6 });
     });
     return {
       label: `t = ${formatNumber(item.time, 5)}`,
@@ -472,7 +472,7 @@ function renderTransientStressChart(canvasId, stressHistory) {
       showLine: true,
     };
   });
-  const base = chartOptions("Stress (MPa)", "Position (μm)", true);
+  const base = chartOptions("Position (μm)", "Stress (MPa)", true);
   return new Chart(canvasId, {
     type: "scatter",
     data: { datasets },
@@ -480,10 +480,10 @@ function renderTransientStressChart(canvasId, stressHistory) {
       ...base,
       scales: {
         ...base.scales,
-        x: {
-          ...base.scales.x,
+        y: {
+          ...base.scales.y,
           ticks: {
-            ...base.scales.x.ticks,
+            ...base.scales.y.ticks,
             callback: (value) => formatSignificantDigits(value, 3),
           },
         },
@@ -527,14 +527,14 @@ function renderTransientProfileChart(canvasId, profiles) {
   destroyChart(canvasId);
   const datasets = profiles.map((profile, i) => ({
     label: `t = ${formatNumber(profile.time, 5)}`,
-    data: profile.points.map((point) => ({ x: point.value, y: point.y })),
+    data: profile.points.map((point) => ({ x: point.y, y: point.value })),
     borderColor: COLORS[i % COLORS.length],
     backgroundColor: COLORS[i % COLORS.length],
     borderWidth: 2.5,
     pointRadius: 0,
     showLine: true,
   }));
-  const base = chartOptions(getTransientLabels().plotXAxis, "Position (μm)", true);
+  const base = chartOptions("Position (μm)", getTransientLabels().plotXAxis, true);
   return new Chart(canvasId, {
     type: "scatter",
     data: { datasets },
@@ -542,10 +542,10 @@ function renderTransientProfileChart(canvasId, profiles) {
       ...base,
       scales: {
         ...base.scales,
-        x: {
-          ...base.scales.x,
+        y: {
+          ...base.scales.y,
           ticks: {
-            ...base.scales.x.ticks,
+            ...base.scales.y.ticks,
             callback: (value) => formatSignificantDigits(value, 3),
           },
         },
