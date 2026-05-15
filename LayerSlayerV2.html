@@ -90,13 +90,18 @@
       overflow: visible;
     }
     .pdf-exporting .table-scroll {
-      max-width: none;
+      max-width: 100%;
+    }
+    .pdf-exporting .table-scroll table,
+    .pdf-exporting table {
+      min-width: 0 !important;
+      width: 100%;
     }
     .pdf-exporting td,
     .pdf-exporting th {
       white-space: nowrap;
-      padding: 7px 10px;
-      font-size: 12px;
+      padding: 4px 6px;
+      font-size: 10px;
     }
     .top-actions {
       display: flex;

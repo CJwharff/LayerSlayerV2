@@ -1419,8 +1419,8 @@ async function exportReportPdf() {
   try {
     await window.MathJax?.typesetPromise?.();
 
-    const width = Math.ceil(source.scrollWidth);
-    const height = Math.ceil(source.scrollHeight);
+    const width = Math.ceil(source.offsetWidth);
+    const height = Math.ceil(source.scrollHeight) + 60;
     const filename = `LayerSlayerV2-report-${new Date().toISOString().slice(0, 10)}.pdf`;
 
     const canvas = await window.html2canvas(source, {
